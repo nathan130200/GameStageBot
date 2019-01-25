@@ -31,9 +31,10 @@ namespace GameStage.Modules
             throw new NotImplementedException();
         }
 
-        [Group]
+        [Group, ModuleLifespan(ModuleLifespan.Singleton)]
         public class TestModule : BaseCommandModule
         {
+            volatile bool _alldone;
             FontCollection _fonts;
             HttpClient _client;
 
@@ -43,14 +44,29 @@ namespace GameStage.Modules
                 _fonts.Install(@".\Resources\Fonts\Bombardier.ttf");
 
                 _client = new HttpClient();
+                _alldone = true;
             }
 
             [Command]
             public async Task RegistrarAsync(CommandContext ctx, bool state = true)
             {
+                var msg = await ctx.RespondAsync($"{ctx.User.Mention} verificando...");
 
-                var msg = await ctx.RespondAsync($"{ctx.User.Mention} Preparando...");
-                var avatar = Image.Load<Rgba32>(await _client.GetStreamAsync(ctx.User.GetAvatarUrl(ImageFormat.Png)));
+                if (!_alldone)
+                    msg = await msg.ModifyAsync($"{ctx.User.Mention} na fila...");
+
+
+                while (!_alldone)
+                    await Task.Delay(100);
+
+
+                _alldone = false;
+
+                msg = await msg.ModifyAsync($"{ctx.User.Mention} preparando...");
+
+
+                var avatarstream = await _client.GetStreamAsync(ctx.User.GetAvatarUrl(ImageFormat.Png));
+                var avatar = Image.Load<Rgba32>(avatarstream);
                 avatar.Mutate(x =>
                 {
                     x.Resize(64, 64);
@@ -108,9 +124,33 @@ namespace GameStage.Modules
 
                 ms.Position = 0;
 
-                msg = await msg.ModifyAsync($"{ctx.User.Mention} Gerando imagem...");
+                msg = await msg.ModifyAsync($"{ctx.User.Mention} finalizando...");
                 await ctx.RespondWithFileAsync($"u_test_registrar_{ctx.User.Id}.png", ms, ctx.User.Mention);
                 await msg.DeleteAsync();
+
+                ms.Dispose();
+                ms = null;
+
+                timestamp.Dispose();
+                timestamp = null;
+
+                statetext.Dispose();
+                statetext = null;
+
+                avatar.Dispose();
+                avatar = null;
+
+                img.Dispose();
+                img = null;
+
+                avatarstream.Dispose();
+                avatarstream = null;
+
+                GC.Collect();
+                var notify = GC.WaitForFullGCComplete(-1);
+                await ctx.RespondAsync($"{ctx.User.Mention} GC::WaitForFullGCComplete(): {notify}");
+
+                _alldone = true;
             }
         }
     }
