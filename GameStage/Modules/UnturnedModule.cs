@@ -147,8 +147,7 @@ namespace GameStage.Modules
                 avatarstream = null;
 
                 GC.Collect();
-                var notify = GC.WaitForFullGCComplete(-1);
-                await ctx.RespondAsync($"{ctx.User.Mention} GC::WaitForFullGCComplete(): {notify}");
+                GC.WaitForFullGCComplete(-1);
 
                 _alldone = true;
             }
