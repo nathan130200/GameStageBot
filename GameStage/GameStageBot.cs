@@ -14,6 +14,8 @@ using System.Text;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
+using DSharpPlus.CommandsNext.Exceptions;
+using DSharpPlus.CommandsNext.Attributes;
 
 namespace GameStage
 {
@@ -84,6 +86,10 @@ namespace GameStage
                 StringPrefixes = new[] { "!", "gst3!", "gamestage!" }
             });
 
+            _commandsnext.RegisterCommands(typeof(GameStageBot).Assembly);
+            _commandsnext.CommandExecuted += this.OnCommandExecuted;
+            _commandsnext.CommandErrored += this.OnCommandErrored;
+
             _activity_timer = new Timer(ActivityTimerCallback, null, -1, -1);
 
             _discord.DebugLogger.LogMessageReceived += this.OnLog;
@@ -137,6 +143,8 @@ namespace GameStage
 
             _activity_timer.Change(10.Seconds(), 30.Seconds());
         }
+
+        #region << Activity Timer >>
 
         async void ActivityTimerCallback(object state)
         {
@@ -325,10 +333,79 @@ namespace GameStage
             }
         }
 
+        #endregion
+
         Task OnClientError(ClientErrorEventArgs e)
         {
             Log.Error("[DSharpPlus] Client error in event {0}\n{1}", e.EventName, e.Exception);
             return Task.CompletedTask;
+        }
+
+        string GetContextFormat(CommandContext ctx)
+        {
+            return $"{ctx.Guild.Name} ({ctx.Guild.Id}): #{ctx.Channel.Name} ({ctx.Channel.Id}) -> " +
+                $"{ctx.User.Username}#{ctx.User.Discriminator} ({ctx.User.Id}): {ctx.Message.Content}";
+        }
+
+        Task OnCommandExecuted(CommandExecutionEventArgs e)
+        {
+            Log.Info("[DSharpPlus/CommandsNext] Command executed: {0}", GetContextFormat(e.Context));
+            return Task.CompletedTask;
+        }
+
+        async Task OnCommandErrored(CommandErrorEventArgs e)
+        {
+            var ctx = e.Context;
+            var ex = e.Exception;
+
+            while (ex is AggregateException)
+                ex = ex.InnerException;
+
+            if (ex is CommandNotFoundException)
+                return;
+
+            if(ex is ChecksFailedException cfe)
+            {
+                var rpa = (RequirePermissionsAttribute)cfe.FailedChecks.FirstOrDefault(xf => xf is RequirePermissionsAttribute);
+                if(rpa != null)
+                {
+                    await ctx.RespondAsync($"{ctx.User.Mention} :x: Você precisa de permissões para executar isso: `{rpa.Permissions.ToPermissionString()}`");
+                    goto log;
+                }
+
+                var roa = (RequireOwnerAttribute)cfe.FailedChecks.FirstOrDefault(xf => xf is RequireOwnerAttribute);
+                if(roa != null)
+                {
+                    await ctx.RespondAsync($"{ctx.User.Mention} :x: Você precisa ser meu desenvolvedor para executar isso.");
+                    goto log;
+                }
+
+                var rbpa = (RequireBotPermissionsAttribute)cfe.FailedChecks.FirstOrDefault(xf => xf is RequireBotPermissionsAttribute);
+                if(rbpa != null)
+                {
+                    await ctx.RespondAsync($"{ctx.User.Mention} :x: Eu preciso de permissões para executar isso: `{rpa.Permissions.ToPermissionString()}`");
+                    goto log;
+                }
+
+            }
+
+            if(ex is NotImplementedException)
+            {
+                await ctx.RespondAsync($"{ctx.User.Mention} :x: Não implementado ainda!");
+                goto log;
+            }
+
+            if (ex is GameStageCommandException gsce)
+            {
+                await gsce.ThrowAsync(ctx);
+                goto log;
+            }
+
+            log:
+            {
+                Log.Error("[DSharpPlus/CommandsNext] Command errored: {0}\n{1}", GetContextFormat(ctx), ex);
+                return;
+            }
         }
     }
 }

@@ -19,4 +19,10 @@
     <PackageReference Include="SixLabors.Shapes.Text" Version="1.0.0-beta0008" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Resources\Fonts\Bombardier.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
