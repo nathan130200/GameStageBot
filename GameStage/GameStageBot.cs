@@ -31,6 +31,7 @@ namespace GameStage
         internal LavalinkExtension _lavalink;
 
         internal Timer _activity_timer;
+        internal volatile int _activity_reset = 0;
 
         public static string GetUnicodeEmoji(string name, bool named = true)
         {
@@ -80,10 +81,11 @@ namespace GameStage
 
             _commandsnext = _discord.UseCommandsNext(new CommandsNextConfiguration
             {
+                Services = _services,
                 EnableDms = false,
                 DmHelp = false,
                 EnableMentionPrefix = false,
-                StringPrefixes = new[] { "!", "gst3!", "gamestage!" }
+                StringPrefixes = new[] { "gst3!", "gst3 " },
             });
 
             _commandsnext.RegisterCommands(typeof(GameStageBot).Assembly);
@@ -146,8 +148,86 @@ namespace GameStage
 
         #region << Activity Timer >>
 
+        public async Task UpdateCreatorActivityAsync(int? size = null)
+        {
+            _activity_reset = size ?? 10;
+
+            if (size == null || size <= 0)
+                _activity_reset = 0;
+
+            var mbrf = new Func<Task<DiscordMember>>(async () => {
+                return await _discord.GetGuildAsync(GAMESTAGE).ContinueWith(task =>
+                {
+                    return task.Result.Members.Where(xm => xm.Id == 143466929615667201)
+                        .FirstOrDefault();
+                });
+            });
+
+            var creator = await mbrf();
+
+            if (creator == null)
+                _activity_reset = 0;
+
+            if (creator.Presence != null && creator.Presence.Activity != null)
+            {
+                if (creator.Presence.Activity.ActivityType == ActivityType.Playing && !string.IsNullOrEmpty(creator.Presence.Activity.Name))
+                {
+                    await _discord.UpdateStatusAsync(new DiscordActivity
+                    {
+                        ActivityType = ActivityType.Watching,
+                        Name = $"{GetUnicodeEmoji(":heart_eyes:")} meu criador {creator.Username}#{creator.Discriminator} jogar {creator.Presence.Activity.Name}.",
+                    });
+                }
+                else if (creator.Presence.Activity.ActivityType == ActivityType.ListeningTo)
+                {
+                    if (_activity_reset > 0)
+                        return;
+                    else
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            do
+                            {
+                                creator = await mbrf();
+
+                                var msc = creator.Presence.Activity.RichPresence.Details + " (" + creator.Presence.Activity.RichPresence.State + ")";
+
+                                await _discord.UpdateStatusAsync(new DiscordActivity
+                                {
+                                    ActivityType = ActivityType.ListeningTo,
+                                    Name = $"{GetUnicodeEmoji(":heart_eyes:")} música boa com meu criador {creator.Username}#{creator.Discriminator} - {msc}.",
+                                });
+
+                                await Task.Delay(1000);
+                                _activity_reset--;
+                            }
+                            while (_activity_reset > 0);
+                        });
+                    }
+                }
+                else
+                    goto def;
+            }
+            else
+                goto def;
+
+        def:
+            {
+                await _discord.UpdateStatusAsync(new DiscordActivity
+                {
+                    ActivityType = ActivityType.Watching,
+                    Name = $"{GetUnicodeEmoji(":heart_eyes:")} meu criador {creator.Username}#{creator.Discriminator} programar.",
+                });
+
+                return;
+            }
+        }
+
         async void ActivityTimerCallback(object state)
         {
+            if (_activity_reset > 0)
+                return;
+
             var offset = new Random(Environment.TickCount).Next(1, 10);
 
             switch (offset)
@@ -274,7 +354,7 @@ namespace GameStage
                             await _discord.UpdateStatusAsync(new DiscordActivity
                             {
                                 ActivityType = ActivityType.Watching,
-                                Name = $"{GetUnicodeEmoji(":heart_eyes:")} meu criador {mbr.Username}#{mbr.Discriminator} jogar.",
+                                Name = $"{GetUnicodeEmoji(":heart_eyes:")} meu criador {mbr.Username}#{mbr.Discriminator} jogar {mbr.Presence.Activity.Name}.",
                             });
                         }
                         else if(mbr.Presence.Activity.ActivityType == ActivityType.ListeningTo)
@@ -296,7 +376,7 @@ namespace GameStage
                         });
                     }
 
-                    _activity_timer.Change(30.Seconds(), 30.Seconds());
+                    await Task.Delay(6000);
                 }
                 break;
 
@@ -328,6 +408,12 @@ namespace GameStage
                         Name = $"{GetUnicodeEmoji(":smiling_imp:")} | To te vendo kkkkk",
                         ActivityType = ActivityType.Watching
                     });
+                }
+                break;
+
+                case 10:
+                {
+                    await UpdateCreatorActivityAsync();
                 }
                 break;
             }

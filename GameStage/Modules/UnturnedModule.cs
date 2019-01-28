@@ -1,155 +1,111 @@
-﻿using DSharpPlus;
-using DSharpPlus.CommandsNext;
+﻿using DSharpPlus.CommandsNext;
 using DSharpPlus.CommandsNext.Attributes;
 using DSharpPlus.CommandsNext.Exceptions;
 using DSharpPlus.Entities;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.Primitives;
+using HtmlAgilityPack;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace GameStage.Modules
 {
-    [Group, Aliases("u")]
+    [Group, Description("Comandos referentes ao unturned da comunidade GameStag3.")]
     public class UnturnedModule : BaseCommandModule
     {
         [Command]
-        public async Task RegistrarAsync(CommandContext ctx, ulong? id = null)
+        public async Task RegistrarAsync(CommandContext ctx,
+
+            [Description("Identificador da steam para cadastro.")]
+            ulong? id = null)
         {
             if (id == null)
-                throw new GameStageCommandException($"{ctx.User.Mention} :x: Você precisa fornecer um identificador válido para steam.");
+                throw new GameStageCommandException($"{ctx.User.Mention} :x: Identificador inválido!");
 
-            throw new NotImplementedException();
+
         }
 
-        [Group, ModuleLifespan(ModuleLifespan.Singleton)]
-        public class TestModule : BaseCommandModule
+        [Command]
+        public async Task BuscarAsync(CommandContext ctx, [RemainingText] string pesquisa)
         {
-            volatile bool _alldone;
-            FontCollection _fonts;
-            HttpClient _client;
+            if (pesquisa.StartsWith("/") || pesquisa.StartsWith("\\"))
+                pesquisa = pesquisa.Substring(1);
 
-            public TestModule()
+            if (pesquisa.EndsWith("/") || pesquisa.EndsWith("\\"))
+                pesquisa.Substring(0, pesquisa.Length - 1);
+
+            var profile = await GetSteamProfileAsync(pesquisa);
+            if (profile == null)
+                await ctx.RespondAsync($"{ctx.User.Mention} Perfil não encontrado!");
+            else
             {
-                _fonts = new FontCollection();
-                _fonts.Install(@".\Resources\Fonts\Bombardier.ttf");
-
-                _client = new HttpClient();
-                _alldone = true;
+                await ctx.RespondAsync(ctx.User.Mention, embed: new DiscordEmbedBuilder()
+                    .WithTitle(profile?.ToString()));
             }
+        }
 
-            [Command]
-            public async Task RegistrarAsync(CommandContext ctx, bool state = true)
+        struct SteamProfileResponse
+        {
+            public ulong Id;
+            public string CustomUrl;
+            public string ProfileState;
+            public string CreatedAt;
+            public string Name;
+            public string RealName;
+            public string Location;
+            public string Status;
+            public string Url;
+
+            public override string ToString()
             {
-                var msg = await ctx.RespondAsync($"{ctx.User.Mention} verificando...");
+                var str = "";
+                var fields = this.GetType().GetFields();
 
-                if (!_alldone)
-                    msg = await msg.ModifyAsync($"{ctx.User.Mention} na fila...");
-
-
-                while (!_alldone)
-                    await Task.Delay(100);
-
-
-                _alldone = false;
-
-                msg = await msg.ModifyAsync($"{ctx.User.Mention} preparando...");
-
-
-                var avatarstream = await _client.GetStreamAsync(ctx.User.GetAvatarUrl(ImageFormat.Png));
-                var avatar = Image.Load<Rgba32>(avatarstream);
-                avatar.Mutate(x =>
+                foreach (var field in fields)
                 {
-                    x.Resize(64, 64);
-                });
+                    str += field.Name + ": " + field.GetValue(this) + ",\n";
+                }
 
+                if (str.EndsWith(",\n"))
+                    str.Substring(0, str.Length - 2);
 
-                var img = new Image<Rgba32>(480, 320);
+                return str;
+            }
+        }
 
-                var text = new Image<Rgba32>(480, 320);
-                text.Mutate(x =>
+        async Task<SteamProfileResponse?> GetSteamProfileAsync(string id)
+        {
+            try
+            {
+                var html = new HtmlDocument();
+
+                using (var client = new HttpClient())
+                using (var response = await client.GetAsync($"https://steamid.io/lookup/{id}"))
                 {
+                    await response.Content.ReadAsStringAsync().ContinueWith(t => html.LoadHtml(t.Result));
 
-                    var fnt = _fonts.Families.ElementAt(0).CreateFont(32f);
-                    x.DrawText($"{ctx.User.Username}#{ctx.User.Discriminator}", fnt, Brushes.Solid(Rgba32.White), Pens.Solid(Rgba32.Black, 1f), new PointF(83, 166));
-                });
+                    var result = new SteamProfileResponse();
 
-                var statetext = new Image<Rgba32>(480, 320);
-                statetext.Mutate(x =>
-                {
-                    var fnt = _fonts.Families.ElementAt(0).CreateFont(24f);
+                    result.Id = ulong.Parse(html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[3]/a").InnerText);
+                    result.CustomUrl = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[4]/a").InnerText;
+                    result.ProfileState = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[5]/span").InnerText;
+                    result.CreatedAt = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[6]").InnerText;
+                    result.Name = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[7]").InnerText;
+                    result.RealName = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[8]").InnerText;
+                    result.Location = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[9]/a").InnerText;
+                    result.Status = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[10]/span").InnerText;
+                    result.Url = html.DocumentNode.SelectSingleNode("//*[@id=\"content\"]/dl/dd[11]/a").InnerText;
 
-                    var pn = Pens.Solid(Rgba32.DarkGreen, 1f);
-                    var bs = Brushes.Solid(Rgba32.Green);
-
-                    var r = "Aprovado";
-
-                    if (!state)
-                    {
-                        r = "Reprovado";
-                        pn = Pens.Solid(Rgba32.DarkRed, 1f);
-                        bs = Brushes.Solid(Rgba32.Red);
-                    }
-
-                    x.DrawText(r, fnt, bs, pn, new PointF(82, 189));
-                });
-
-                var timestamp = new Image<Rgba32>(480, 320);
-                timestamp.Mutate(x =>
-                {
-                    var fnt = _fonts.Families.ElementAt(0).CreateFont(24f);
-
-                    x.DrawText(DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"), fnt, Brushes.Solid(Rgba32.White), Pens.Solid(Rgba32.Black, 0.8f), new PointF(82, 213));
-                });
-
-                img.Mutate(x =>
-                {
-                    x.DrawImage(avatar, new Point(10, 165), 1f);
-                    x.DrawImage(text, 1f);
-                    x.DrawImage(statetext, 1f);
-                    x.DrawImage(timestamp, 1f);
-                });
-
-                var ms = new MemoryStream();
-                img.SaveAsPng(ms);
-
-                ms.Position = 0;
-
-                msg = await msg.ModifyAsync($"{ctx.User.Mention} finalizando...");
-                await ctx.RespondWithFileAsync($"u_test_registrar_{ctx.User.Id}.png", ms, ctx.User.Mention);
-                await msg.DeleteAsync();
-
-                ms.Dispose();
-                ms = null;
-
-                timestamp.Dispose();
-                timestamp = null;
-
-                statetext.Dispose();
-                statetext = null;
-
-                avatar.Dispose();
-                avatar = null;
-
-                img.Dispose();
-                img = null;
-
-                avatarstream.Dispose();
-                avatarstream = null;
-
-                GC.Collect();
-                GC.WaitForFullGCComplete(-1);
-
-                _alldone = true;
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(nameof(UnturnedModule) + " GetSteamProfile(): [{0}]\n{1}", id, ex);
+                return null;
             }
         }
     }

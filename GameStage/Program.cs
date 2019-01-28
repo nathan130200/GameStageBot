@@ -14,6 +14,7 @@ namespace GameStage
 
         public Program()
         {
+            _instance = this;
             _bot = new GameStageBot();
         }
 
@@ -47,9 +48,15 @@ namespace GameStage
             await program.StartAsync();
 
             while (!_cts.IsCancellationRequested)
-                await Task.Delay(1000);
+                await Task.Delay(100);
 
             await program.StopAsync();
         }
+
+        public static Program GetInstance()
+            => _instance;
+
+        public GameStageBot GetBot()
+            => _bot;
     }
 }

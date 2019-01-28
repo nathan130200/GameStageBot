@@ -10,6 +10,7 @@
     <PackageReference Include="DSharpPlus.CommandsNext" Version="4.0.0-nightly-00564" />
     <PackageReference Include="DSharpPlus.Interactivity" Version="4.0.0-nightly-00564" />
     <PackageReference Include="DSharpPlus.Lavalink" Version="4.0.0-nightly-00564" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.8.14" />
     <PackageReference Include="Humanizer" Version="2.5.16" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.0.0-beta2-final" />
     <PackageReference Include="SixLabors.Fonts" Version="1.0.0-beta0008" />
